@@ -8,11 +8,19 @@
 
 enum class MessageType {PREPARE_REQ, ACCEPT_REQ, PREPARE_RESP, DECISION};
 
+struct Proposal {
+    long n;
+    int v; // para simplificar inicialmente
+};
+
 struct Message {
     MessageType type;
-    Role* sender;
-    Role* receiver;
-    void* data;    
+    Node* sender;
+    Node* receiver;
+    std::shared_ptr<Proposal> proposal;
+    
+    Message(MessageType type, Node* sender, Node* receiver, std::shared_ptr<Proposal> proposal) :
+    type(type), sender(sender), receiver(receiver), proposal(proposal) {};
 };
 
 class Mailbox {
@@ -35,11 +43,12 @@ private:
 class Network {
 public:
     void send(Message& msg);
+    void broadcast(Message& msg);
 
 private:
     double generator();
 
-    std::unordered_map<Node&, Mailbox> mailboxes_map;
+    std::unordered_map<Node*, Mailbox> mailboxes_map;
     double drop_rate;
     bool delay_enabled;
     int min_delay_ms;

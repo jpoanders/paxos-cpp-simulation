@@ -2,11 +2,8 @@
 #include "roles.hpp"
 #include "communication.hpp"
 #include <thread>
-#include <vector>
+#include <unordered_map>
 #include <deque>
-#include <semaphore>
-
-#define DEFAULT_MSG_BUFFER_SIZE 50
 
 class Node {
 public:
@@ -18,27 +15,26 @@ public:
 
     void run();
 
-    void join();
+    void shutdown();
+
+    void send_message(Message& msg);
+
+    void broadcast(Message& msg);
 
 private:
     void listen();
 
-    void dispatch (std::size_t role, Message& msg);
-    
-    void worker();
+    void dispatch (RoleType type, Message& msg);
     
     bool is_running = false;
-    std::vector<std::deque<Message>> dispatch_queues;
-    std::mutex* disp_q_mtxs;
-    std::condition_variable* disp_q_cond;
-    std::size_t msg_buffer_size = DEFAULT_MSG_BUFFER_SIZE;
     std::size_t n_roles;
 
+    Network* network;
     Mailbox mailbox;
-    Acceptor* acceptor;
-    Learner* learner;
-    Proposer* proposer;
-
+    std::unordered_map<RoleType, Role*> roles;
+    Role* acceptor;
+    Role* learner;
+    Role* proposer;
     std::thread t_listener;
     std::thread t_acceptor;
     std::thread t_learner;

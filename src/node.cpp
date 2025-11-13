@@ -2,20 +2,16 @@
 
 Node::Node() {
     n_roles = 3u;
-    acceptor = new Acceptor();
-    learner = new Learner();
-    proposer = new Proposer();
-    disp_q_mtxs = new std::mutex[n_roles];
-    disp_q_cond = new std::condition_variable[n_roles];
+    acceptor = new Acceptor(); roles[RoleType::ACCEPTOR] = acceptor;
+    learner = new Learner(); roles[RoleType::LEARNER] = learner;
+    proposer = new Proposer(); roles[RoleType::PROPOSER] = proposer;
 }
 
 Node::~Node() {
-    join();
+    shutdown();
     delete acceptor;
     delete learner;
     delete proposer;
-    delete[] disp_q_mtxs;
-    delete[] disp_q_cond;
 }
 
 void Node::run() {
@@ -27,12 +23,24 @@ void Node::run() {
     if (proposer) t_proposer = std::thread(&Proposer::run, &proposer);
 }
 
-void Node::join() {
+void Node::shutdown() {
+    auto& mtx = mailbox.get_mutex();
+    auto& cond = mailbox.get_cond();
+
+    // implementar
+
+
+    acceptor->shutdown();
+    learner->shutdown();
+    proposer->shutdown();    
     t_listener.join();
     if (acceptor) t_acceptor.join();
     if (learner) t_learner.join();
     if (proposer) t_proposer.join();
-    is_running = false;
+}
+
+void Node::send_message(Message& msg) {
+    network->send(msg);
 }
 
 void Node::listen() {
@@ -44,20 +52,30 @@ void Node::listen() {
         if (q.empty()) cond.wait(lock, [&]{ return !q.empty();});
         auto msg = q.front();
         q.pop_front();
+        bool last_dispatch = !is_running;
         lock.unlock();
-        
-        switch (msg.type) {
-            case MessageType::PREPARE_REQ:
-                dispatch(0u, msg);
-            case MessageType::ACCEPT_REQ:
-                dispatch(0u, msg);
-            case MessageType::PREPARE_RESP:
-                dispatch(2u, msg);
-            case MessageType::DECISION:
-                dispatch(1u, msg);
-        }
+        cond.notify_all();
 
-        if (!is_running)
+        RoleType receiver_type = RoleType::ACCEPTOR;
+
+        if (msg.type == MessageType::PREPARE_RESP)
+            receiver_type = RoleType::PROPOSER;
+        else if (msg.type == MessageType::DECISION)
+            receiver_type = RoleType::LEARNER;
+        
+        dispatch(receiver_type, msg);
+
+        if (last_dispatch)
             break;
     }
+}
+
+void Node::dispatch(RoleType type, Message& msg) {
+    auto& queue = roles[type]->get_dispatch_queue();
+    auto& mtx = roles[type]->get_mutex();
+    auto& cond = roles[type]->get_cond();
+    std::unique_lock<std::mutex> lock(mtx);
+    queue.push_back(msg);
+    lock.unlock();
+    cond.notify_all();
 }
